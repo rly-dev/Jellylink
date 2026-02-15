@@ -27,4 +27,12 @@ class JellyfinConfig {
      * Default: "mp3"
      */
     var audioCodec: String = "mp3"
+
+    /**
+     * How often (in minutes) the Jellyfin access token should be refreshed.
+     * The plugin will re-authenticate automatically before the token expires.
+     * Set to 0 to disable automatic refresh (token is obtained once and reused until a 401 occurs).
+     * Default: 30
+     */
+    var tokenRefreshMinutes: Int = 30
 }

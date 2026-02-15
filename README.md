@@ -77,6 +77,7 @@ plugins:
       searchLimit: 5          # max results to return (default: 5)
       audioQuality: "ORIGINAL" # ORIGINAL | HIGH | MEDIUM | LOW | custom kbps
       audioCodec: "mp3"       # only used when audioQuality is not ORIGINAL
+      tokenRefreshMinutes: 30 # re-authenticate every N minutes (0 = only on 401)
 ```
 
 #### Audio Quality Options

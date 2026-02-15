@@ -17,7 +17,14 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.util.UUID
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
@@ -29,12 +36,15 @@ class JellyfinAudioSourceManager(
 
     private val log = LoggerFactory.getLogger(JellyfinAudioSourceManager::class.java)
     private val httpClient: HttpClient = HttpClient.newHttpClient()
+    private val json = Json { ignoreUnknownKeys = true }
     val containerRegistry: MediaContainerRegistry = MediaContainerRegistry.DEFAULT_REGISTRY
     private val httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager()
     @Volatile
     private var accessToken: String? = null
     @Volatile
     private var userId: String? = null
+    @Volatile
+    private var tokenObtainedAt: Instant? = null
 
     fun getHttpInterface(): HttpInterface = httpInterfaceManager.`interface`
 
@@ -81,8 +91,30 @@ class JellyfinAudioSourceManager(
         return JellyfinAudioTrack(trackInfo, this)
     }
 
+    /**
+     * Invalidate the current token so the next call to [ensureAuthenticated] will re-authenticate.
+     */
+    private fun invalidateToken() {
+        log.info("Invalidating Jellyfin access token")
+        accessToken = null
+        userId = null
+        tokenObtainedAt = null
+    }
+
+    private fun isTokenExpired(): Boolean {
+        val refreshMinutes = config.tokenRefreshMinutes
+        if (refreshMinutes <= 0) return false // automatic refresh disabled
+        val obtainedAt = tokenObtainedAt ?: return true
+        return Instant.now().isAfter(obtainedAt.plusSeconds(refreshMinutes * 60L))
+    }
+
     private fun ensureAuthenticated(): Boolean {
-        if (accessToken != null && userId != null) return true
+        if (accessToken != null && userId != null && !isTokenExpired()) return true
+        // Token missing or expired — (re-)authenticate
+        if (accessToken != null && isTokenExpired()) {
+            log.info("Jellyfin access token expired after {} minutes, re-authenticating", config.tokenRefreshMinutes)
+            invalidateToken()
+        }
         if (config.baseUrl.isBlank() || config.username.isBlank() || config.password.isBlank()) return false
 
         val url = config.baseUrl.trimEnd('/') + "/Users/AuthenticateByName"
@@ -104,28 +136,18 @@ class JellyfinAudioSourceManager(
         }
 
         log.info("Successfully authenticated with Jellyfin")
-        val bodyText = response.body()
-        val tokenKey = "\"AccessToken\":\""
-        val tokenIndex = bodyText.indexOf(tokenKey)
-        if (tokenIndex == -1) return false
-        val tokenStart = tokenIndex + tokenKey.length
-        val tokenEnd = bodyText.indexOf('"', tokenStart)
-        if (tokenEnd <= tokenStart) return false
-        val token = bodyText.substring(tokenStart, tokenEnd)
+        val responseJson = json.parseToJsonElement(response.body()).jsonObject
+        val token = responseJson["AccessToken"]?.jsonPrimitive?.contentOrNull
+        val uid = responseJson["User"]?.jsonObject?.get("Id")?.jsonPrimitive?.contentOrNull
 
-        val userKey = "\"User\":{"
-        val userIndex = bodyText.indexOf(userKey)
-        if (userIndex == -1) return false
-        val idKey = "\"Id\":\""
-        val idIndex = bodyText.indexOf(idKey, userIndex)
-        if (idIndex == -1) return false
-        val idStart = idIndex + idKey.length
-        val idEnd = bodyText.indexOf('"', idStart)
-        if (idEnd <= idStart) return false
-        val uid = bodyText.substring(idStart, idEnd)
+        if (token == null || uid == null) {
+            log.error("Jellyfin auth response missing AccessToken or User.Id")
+            return false
+        }
 
         accessToken = token
         userId = uid
+        tokenObtainedAt = Instant.now()
         return true
     }
 
@@ -150,7 +172,24 @@ class JellyfinAudioSourceManager(
             .GET()
             .build()
 
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+        var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+
+        // If 401, the token may have been revoked server-side — re-authenticate and retry once
+        if (response.statusCode() == 401) {
+            log.warn("Jellyfin search returned 401 — token may have been revoked, re-authenticating")
+            invalidateToken()
+            if (!ensureAuthenticated()) {
+                log.error("Jellyfin re-authentication failed after 401")
+                return null
+            }
+            val retryRequest = HttpRequest.newBuilder()
+                .uri(java.net.URI.create(url))
+                .header("X-Emby-Token", accessToken ?: return null)
+                .GET()
+                .build()
+            response = httpClient.send(retryRequest, HttpResponse.BodyHandlers.ofString())
+        }
+
         if (response.statusCode() !in 200..299) {
             log.error("Jellyfin search failed with status {}: {}", response.statusCode(), response.body().take(500))
             return null
@@ -159,26 +198,21 @@ class JellyfinAudioSourceManager(
         val body = response.body()
         log.debug("Jellyfin search response: {}", body.take(2000))
 
-        // Find the first item in the Items array
-        val itemsIdx = body.indexOf("\"Items\":[")
-        if (itemsIdx == -1) return null
-        val firstItemStart = body.indexOf("{", itemsIdx + 9)
-        if (firstItemStart == -1) return null
+        val responseJson = json.parseToJsonElement(body).jsonObject
+        val items = responseJson["Items"]?.jsonArray
+        if (items.isNullOrEmpty()) return null
 
-        // Take a generous chunk for the first item
-        val itemChunk = body.substring(firstItemStart, minOf(body.length, firstItemStart + 5000))
+        val item = items[0].jsonObject
+        val id = item["Id"]?.jsonPrimitive?.contentOrNull ?: return null
+        val title = item["Name"]?.jsonPrimitive?.contentOrNull
+        val artist = item["AlbumArtist"]?.jsonPrimitive?.contentOrNull
+            ?: item["Artists"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.contentOrNull
+        val album = item["Album"]?.jsonPrimitive?.contentOrNull
 
-        val id = extractJsonString(itemChunk, "Id") ?: return null
-        val title = extractJsonString(itemChunk, "Name")
-        val artist = extractJsonString(itemChunk, "AlbumArtist")
-            ?: extractFirstArrayElement(itemChunk, "Artists")
-        val album = extractJsonString(itemChunk, "Album")
+        val runTimeTicks = item["RunTimeTicks"]?.jsonPrimitive?.longOrNull
+        val lengthMs = runTimeTicks?.let { it / 10_000 }
 
-        val runtimeTicks = extractJsonLong(itemChunk, "RunTimeTicks")
-        val lengthMs = runtimeTicks?.let { it / 10_000 }
-
-        val imageTag = extractJsonString(itemChunk, "Primary")
-        // Always provide an artwork URL — Jellyfin will serve the image even without the tag param
+        val imageTag = item["ImageTags"]?.jsonObject?.get("Primary")?.jsonPrimitive?.contentOrNull
         val baseUrl = config.baseUrl.trimEnd('/')
         val artUrl = if (imageTag != null) {
             "$baseUrl/Items/$id/Images/Primary?tag=$imageTag"
@@ -195,84 +229,6 @@ class JellyfinAudioSourceManager(
             lengthMs = lengthMs,
             artworkUrl = artUrl
         )
-    }
-
-    private fun extractJsonString(json: String, key: String): String? {
-        val pattern = "\"$key\":\""
-        val idx = json.indexOf(pattern)
-        if (idx == -1) return null
-        val start = idx + pattern.length
-        val end = findUnescapedQuote(json, start)
-        return if (end > start) unescapeJson(json.substring(start, end)) else null
-    }
-
-    private fun extractFirstArrayElement(json: String, key: String): String? {
-        val pattern = "\"$key\":[\""
-        val idx = json.indexOf(pattern)
-        if (idx == -1) return null
-        val start = idx + pattern.length
-        val end = findUnescapedQuote(json, start)
-        return if (end > start) unescapeJson(json.substring(start, end)) else null
-    }
-
-    /** Find the next unescaped double-quote starting from [from]. */
-    private fun findUnescapedQuote(json: String, from: Int): Int {
-        var i = from
-        while (i < json.length) {
-            when (json[i]) {
-                '\\' -> i += 2 // skip escaped character
-                '"'  -> return i
-                else -> i++
-            }
-        }
-        return -1
-    }
-
-    /** Decode JSON string escape sequences: \\uXXXX, \\n, \\t, \\\\, \\", etc. */
-    private fun unescapeJson(s: String): String {
-        if (!s.contains('\\')) return s
-        val sb = StringBuilder(s.length)
-        var i = 0
-        while (i < s.length) {
-            if (s[i] == '\\' && i + 1 < s.length) {
-                when (s[i + 1]) {
-                    'u' -> {
-                        if (i + 5 < s.length) {
-                            val hex = s.substring(i + 2, i + 6)
-                            val cp = hex.toIntOrNull(16)
-                            if (cp != null) {
-                                sb.append(cp.toChar())
-                                i += 6
-                                continue
-                            }
-                        }
-                        sb.append(s[i])
-                        i++
-                    }
-                    'n'  -> { sb.append('\n'); i += 2 }
-                    't'  -> { sb.append('\t'); i += 2 }
-                    'r'  -> { sb.append('\r'); i += 2 }
-                    '\\' -> { sb.append('\\'); i += 2 }
-                    '"'  -> { sb.append('"');  i += 2 }
-                    '/'  -> { sb.append('/');  i += 2 }
-                    else -> { sb.append(s[i]); i++ }
-                }
-            } else {
-                sb.append(s[i])
-                i++
-            }
-        }
-        return sb.toString()
-    }
-
-    private fun extractJsonLong(json: String, key: String): Long? {
-        val pattern = "\"$key\":"
-        val idx = json.indexOf(pattern)
-        if (idx == -1) return null
-        val start = idx + pattern.length
-        var end = start
-        while (end < json.length && json[end].isDigit()) end++
-        return if (end > start) json.substring(start, end).toLongOrNull() else null
     }
 
     private fun buildPlaybackUrl(itemId: String): String {
