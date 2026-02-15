@@ -1,3 +1,8 @@
+<!--
+Title: Jellylink — Self-Hosted Jellyfin Lavalink Plugin for Discord Music Bots
+Description: Jellylink is an open-source Lavalink plugin that integrates Jellyfin with Lavalink so Discord music bots can stream audio directly from your Jellyfin media server. Self-hosted, private, and high-quality audio streaming for your bot.
+Keywords: Jellyfin Lavalink plugin, Jellyfin music bot, Discord music bot self-hosted, stream music from Jellyfin to Discord, Lavalink plugin, Jellyfin audio streaming
+-->
 # Jellylink – Jellyfin Music Plugin for Lavalink
 
 Play music from your **Jellyfin** media server through **Lavalink**. Jellylink is a Lavalink plugin that lets Discord bots search and stream audio directly from a Jellyfin library — no YouTube needed.
