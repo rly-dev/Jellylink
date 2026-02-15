@@ -1,4 +1,4 @@
-package dev.jellylink.jellyfin
+package dev.jellylink.jellyfin.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component

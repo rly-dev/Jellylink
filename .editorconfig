@@ -1,0 +1,19 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+max_line_length = 150
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_no-multi-spaces = enabled
+ktlint_standard_no-trailing-spaces = enabled
+ktlint_standard_no-consecutive-blank-lines = enabled
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+ktlint_standard_multiline-expression-wrapping = disabled

@@ -1,0 +1,226 @@
+# =============================================================================
+# Detekt configuration — strict backend production standard
+# =============================================================================
+# Built on top of the default config (buildUponDefaultConfig = true in Gradle).
+# Only overrides and activations listed here; everything else uses defaults.
+
+# ---------------------------------------------------------------------------
+# Complexity rules
+# ---------------------------------------------------------------------------
+complexity:
+  # Cyclomatic complexity per function — matches ESLint complexity: 20
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+
+  # Flag classes with too many lines of code
+  LargeClass:
+    active: true
+    threshold: 600
+
+  # Flag files/classes with too many functions
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 30
+    thresholdInClasses: 25
+    thresholdInInterfaces: 20
+    thresholdInObjects: 20
+    thresholdInEnums: 10
+    ignoreOverridden: true
+
+  # Flag deeply nested blocks
+  NestedBlockDepth:
+    active: true
+    threshold: 5
+
+  # Flag functions with too many parameters
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreDefaultParameters: true
+    ignoreAnnotated:
+      - "ConfigurationProperties"
+
+  # Flag excessively long methods
+  LongMethod:
+    active: true
+    threshold: 80
+
+# ---------------------------------------------------------------------------
+# Empty blocks — no empty functions or classes
+# ---------------------------------------------------------------------------
+empty-blocks:
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+  EmptyClassBlock:
+    active: true
+
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: "_|(ignore|expected).*"
+
+  EmptyElseBlock:
+    active: true
+
+  EmptyIfBlock:
+    active: true
+
+  EmptyWhenBlock:
+    active: true
+
+# ---------------------------------------------------------------------------
+# Naming conventions — forbid short / misleading identifiers
+# ---------------------------------------------------------------------------
+naming:
+  ForbiddenClassName:
+    active: false
+
+  FunctionNaming:
+    active: true
+
+  # Forbid single-letter and overly generic variable names
+  # Matches: e, i, x, y, any, string
+  VariableNaming:
+    active: true
+    variablePattern: "(?!^(e|i|x|y|any|string)$)[a-z][A-Za-z0-9]*"
+
+  # Top-level / companion object properties must follow convention
+  TopLevelPropertyNaming:
+    active: true
+
+# ---------------------------------------------------------------------------
+# Style rules — val preference, visibility, imports, member ordering
+# ---------------------------------------------------------------------------
+style:
+  # Allow guard-clause heavy functions (early returns are idiomatic Kotlin)
+  ReturnCount:
+    active: true
+    max: 8
+    excludeGuardClauses: true
+
+  # Prefer val over var when variable is never reassigned
+  VarCouldBeVal:
+    active: true
+    ignoreAnnotated:
+      - "ConfigurationProperties"
+
+  # No wildcard imports (reinforces ktlint rule)
+  WildcardImport:
+    active: true
+    excludeImports: []
+
+  # Forbid specific imports (configurable — add patterns as needed)
+  ForbiddenImport:
+    active: true
+    imports: []
+    forbiddenPatterns: ""
+
+  # Flag unused private members
+  UnusedPrivateMember:
+    active: true
+    allowedNames: "(_|ignored|expected|serialVersionUID)"
+
+  # Flag magic numbers
+  MagicNumber:
+    active: true
+    ignoreNumbers:
+      - "-1"
+      - "0"
+      - "1"
+      - "2"
+      - "10"
+      - "100"
+      - "1000"
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: false
+    ignoreConstantDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+    ignoreAnnotated:
+      - "ConfigurationProperties"
+
+  # Max line length — matches ktlint / editorconfig value
+  MaxLineLength:
+    active: true
+    maxLineLength: 150
+    excludeCommentStatements: true
+    excludePackageStatements: true
+    excludeImportStatements: true
+
+
+  # Prefer expression body for simple single-expression functions
+  OptionalAbstractKeyword:
+    active: true
+
+  # Enforce consistent member ordering inside classes
+  ClassOrdering:
+    active: true
+
+  # Enforce braces on all if/else branches — no single-line if bodies
+  BracesOnIfStatements:
+    active: true
+    singleLine: always
+    multiLine: always
+
+# ---------------------------------------------------------------------------
+# Potential bugs
+# ---------------------------------------------------------------------------
+potential-bugs:
+  EqualsAlwaysReturnsTrueOrFalse:
+    active: true
+
+  UnreachableCode:
+    active: true
+
+  IteratorNotThrowingNoSuchElementException:
+    active: true
+
+# ---------------------------------------------------------------------------
+# Performance
+# ---------------------------------------------------------------------------
+performance:
+  SpreadOperator:
+    active: false
+
+  ForEachOnRange:
+    active: true
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+exceptions:
+  TooGenericExceptionCaught:
+    active: true
+    exceptionNames:
+      - "ArrayIndexOutOfBoundsException"
+      - "Error"
+      - "IllegalMonitorStateException"
+      - "IndexOutOfBoundsException"
+      - "NullPointerException"
+      - "RuntimeException"
+
+  TooGenericExceptionThrown:
+    active: true
+    exceptionNames:
+      - "Error"
+      - "Exception"
+      - "RuntimeException"
+      - "Throwable"
+
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - "InterruptedException"
+      - "MalformedURLException"
+      - "NumberFormatException"
+      - "ParseException"
+
+# ---------------------------------------------------------------------------
+# Global exclusions — handled in build.gradle.kts (source.setFrom, exclude)
+# ---------------------------------------------------------------------------

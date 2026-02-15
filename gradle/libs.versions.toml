@@ -1,6 +1,10 @@
 [versions]
 lavalink-api = "4.0.8"
 lavalink-server = "4.0.8"
+detekt = "1.23.7"
+ktlint = "12.1.2"
 
 [plugins]
 lavalink = { id = "dev.arbjerg.lavalink.gradle-plugin", version = "1.0.15" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }

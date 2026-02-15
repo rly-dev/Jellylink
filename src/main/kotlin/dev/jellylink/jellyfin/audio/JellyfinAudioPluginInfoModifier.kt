@@ -1,7 +1,9 @@
-package dev.jellylink.jellyfin
+package dev.jellylink.jellyfin.audio
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import dev.arbjerg.lavalink.api.AudioPluginInfoModifier
+import dev.jellylink.jellyfin.config.JellyfinConfig
+import dev.jellylink.jellyfin.model.JellyfinMetadataStore
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.springframework.stereotype.Component
@@ -9,12 +11,14 @@ import org.springframework.stereotype.Component
 @Component
 class JellyfinAudioPluginInfoModifier(
     private val metadataStore: JellyfinMetadataStore,
-    private val config: JellyfinConfig
+    private val config: JellyfinConfig,
 ) : AudioPluginInfoModifier {
-
     override fun modifyAudioTrackPluginInfo(track: AudioTrack): JsonObject? {
         val uri = track.info.uri ?: return null
-        if (!uri.startsWith(config.baseUrl.trimEnd('/'))) return null
+
+        if (!uri.startsWith(config.baseUrl.trimEnd('/'))) {
+            return null
+        }
 
         val meta = metadataStore.get(uri) ?: return null
 
@@ -27,6 +31,10 @@ class JellyfinAudioPluginInfoModifier(
             meta.artworkUrl?.let { put("jellyfinArtworkUrl", JsonPrimitive(it)) }
         }
 
-        return if (map.isEmpty()) null else JsonObject(map)
+        return if (map.isEmpty()) {
+            null
+        } else {
+            JsonObject(map)
+        }
     }
 }
