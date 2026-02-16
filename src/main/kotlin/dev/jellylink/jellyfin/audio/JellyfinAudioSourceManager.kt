@@ -10,7 +10,6 @@ import com.sedmelluq.discord.lavaplayer.track.AudioReference
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo
 import dev.jellylink.jellyfin.client.JellyfinApiClient
-import dev.jellylink.jellyfin.model.JellyfinMetadataStore
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.DataInput
@@ -27,7 +26,6 @@ import java.io.IOException
 @Service
 class JellyfinAudioSourceManager(
     private val apiClient: JellyfinApiClient,
-    private val metadataStore: JellyfinMetadataStore,
 ) : AudioSourceManager {
     private val httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager()
 
@@ -71,8 +69,6 @@ class JellyfinAudioSourceManager(
         val playbackUrl = apiClient.buildPlaybackUrl(item.id)
         log.info("Jellyfin playback URL: {}", playbackUrl)
 
-        metadataStore.put(playbackUrl, item)
-
         val trackInfo =
             AudioTrackInfo(
                 item.title ?: "Unknown",
@@ -85,7 +81,14 @@ class JellyfinAudioSourceManager(
                 null,
             )
 
-        return JellyfinAudioTrack(trackInfo, this)
+        return JellyfinAudioTrack(
+            trackInfo,
+            item.id,
+            item.artist,
+            item.album,
+            item.artworkUrl,
+            this,
+        )
     }
 
     override fun isTrackEncodable(track: AudioTrack): Boolean = true
@@ -102,7 +105,15 @@ class JellyfinAudioSourceManager(
     override fun decodeTrack(
         trackInfo: AudioTrackInfo,
         input: DataInput,
-    ): AudioTrack = JellyfinAudioTrack(trackInfo, this)
+    ): AudioTrack =
+        JellyfinAudioTrack(
+            trackInfo,
+            trackInfo.identifier, // Use identifier as jellyfinId
+            trackInfo.author, // Use author as artist
+            null, // Album not available in trackInfo
+            trackInfo.artworkUrl, // Artwork URL from trackInfo
+            this,
+        )
 
     override fun shutdown() {
         httpInterfaceManager.close()
